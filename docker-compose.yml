@@ -1,0 +1,10 @@
+services:
+  client-checker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8706:3000"
+    environment:
+      - NODE_ENV=production
