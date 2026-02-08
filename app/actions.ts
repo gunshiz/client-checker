@@ -185,6 +185,26 @@ async function analyzeClassFiles(zip: JSZip): Promise<boolean> {
         clientOnlyScore += 0.5;
       }
     }
+
+    // Scan .class files for client-only package references
+    if (fileName.endsWith(".class") && lowerName.includes("/client/")) {
+      try {
+        const classFile = zip.file(fileName);
+        if (classFile) {
+          const content = await classFile.async("text");
+          
+          // Check for CLIENT_ONLY_PATTERNS in class file content
+          for (const pattern of CLIENT_ONLY_PATTERNS) {
+            if (pattern.test(content)) {
+              clientOnlyScore += 1;
+              break; // Only count once per file
+            }
+          }
+        }
+      } catch {
+        // Skip files that can't be read as text
+      }
+    }
   }
 
   // If there's ANY evidence of server code, it's not client-only

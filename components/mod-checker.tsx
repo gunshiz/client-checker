@@ -16,6 +16,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Progress } from "@/components/ui/progress";
 import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
   Upload,
   FileArchive,
   CheckCircle2,
@@ -312,12 +318,66 @@ export function ModChecker() {
                 {results.length > 1 && (
                   <div className="flex items-center justify-between mb-4 p-3 bg-zinc-800/50 rounded-lg">
                     <div className="flex items-center gap-2 text-sm">
-                      <span className="text-emerald-400 flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4" /> {serverCompatibleCount} ลงได้
-                      </span>
-                      <span className="text-red-400 flex items-center gap-2">
-                        <XCircle className="h-4 w-4" /> {clientOnlyCount} ห้ามลง
-                      </span>
+                      <HoverCard>
+                        <HoverCardTrigger asChild>
+                          <span className="text-emerald-400 flex items-center gap-2 cursor-pointer hover:underline">
+                            <CheckCircle2 className="h-4 w-4" /> {serverCompatibleCount} ลงได้
+                          </span>
+                        </HoverCardTrigger>
+                        <HoverCardContent className="w-80 bg-zinc-900 border-zinc-700">
+                          <div className="space-y-2">
+                            <h4 className="text-sm font-semibold text-emerald-400 flex items-center gap-2">
+                              <CheckCircle2 className="h-4 w-4" />
+                              มอดที่สามารถลงได้
+                            </h4>
+                            <ScrollArea className="h-48">
+                              <div className="space-y-1">
+                                {results
+                                  .filter((r) => !r.isClientOnly)
+                                  .map((r, i) => (
+                                    <div
+                                      key={i}
+                                      className="text-xs text-zinc-300 p-1.5 bg-zinc-800/50 rounded truncate"
+                                      
+                                    >
+                                      {r.fileName}
+                                    </div>
+                                  ))}
+                              </div>
+                            </ScrollArea>
+                          </div>
+                        </HoverCardContent>
+                      </HoverCard>
+                      <HoverCard>
+                        <HoverCardTrigger asChild>
+                          <span className="text-red-400 flex items-center gap-2 cursor-pointer hover:underline">
+                            <XCircle className="h-4 w-4" /> {clientOnlyCount} ห้ามลง
+                          </span>
+                        </HoverCardTrigger>
+                        <HoverCardContent className="w-80 bg-zinc-900 border-zinc-700">
+                          <div className="space-y-2">
+                            <h4 className="text-sm font-semibold text-red-400 flex items-center gap-2">
+                              <XCircle className="h-4 w-4" />
+                              มอดที่ห้ามลง
+                            </h4>
+                            <ScrollArea className="h-48">
+                              <div className="space-y-1">
+                                {results
+                                  .filter((r) => r.isClientOnly)
+                                  .map((r, i) => (
+                                    <div
+                                      key={i}
+                                      className="text-xs text-zinc-300 p-1.5 bg-zinc-800/50 rounded truncate"
+                                      
+                                    >
+                                      {r.fileName}
+                                    </div>
+                                  ))}
+                              </div>
+                            </ScrollArea>
+                          </div>
+                        </HoverCardContent>
+                      </HoverCard>
                     </div>
                     <span className="text-zinc-500 text-sm ml-2">
                       {currentIndex + 1} / {results.length}
