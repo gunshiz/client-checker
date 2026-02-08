@@ -110,6 +110,8 @@ async function analyzeClassFiles(zip: JSZip): Promise<boolean> {
   let clientOnlyScore = 0;
   let serverCompatibleScore = 0;
   const files = Object.keys(zip.files);
+  let totalClassFiles = 0;
+  let clientClassFiles = 0;
 
   for (const fileName of files) {
     const lowerName = fileName.toLowerCase();
@@ -120,7 +122,10 @@ async function analyzeClassFiles(zip: JSZip): Promise<boolean> {
       lowerName.includes("\\client\\") ||
       lowerName.startsWith("client/")
     ) {
-      clientOnlyScore += 2;
+      clientOnlyScore += 1;
+      if (fileName.endsWith(".class")) {
+        clientClassFiles++;
+      }
     }
 
     // Check for server directories (indicates server compatibility)
@@ -129,49 +134,70 @@ async function analyzeClassFiles(zip: JSZip): Promise<boolean> {
       lowerName.includes("\\server\\") ||
       lowerName.startsWith("server/")
     ) {
+      serverCompatibleScore += 5;
+    }
+
+    // Check for common/shared directories (indicates both sides - strong indicator)
+    if (lowerName.includes("/common/") || lowerName.includes("/shared/")) {
+      serverCompatibleScore += 5;
+    }
+
+    // Check for mixin directories (usually means both client and server)
+    if (lowerName.includes("/mixin/") || lowerName.includes("/mixins/")) {
       serverCompatibleScore += 3;
     }
 
-    // Check for common directories (indicates both sides)
-    if (lowerName.includes("/common/") || lowerName.includes("/shared/")) {
+    // Check for data/recipes (server-side content)
+    if (
+      lowerName.includes("/data/") ||
+      lowerName.includes("/recipe/") ||
+      lowerName.includes("/recipes/") ||
+      lowerName.includes("/loot/") ||
+      lowerName.includes("/advancement/") ||
+      lowerName.includes("/worldgen/")
+    ) {
+      serverCompatibleScore += 3;
+    }
+
+    // Check for block/item/entity classes (server-side content)
+    if (
+      lowerName.includes("/block/") ||
+      lowerName.includes("/item/") ||
+      lowerName.includes("/entity/") ||
+      lowerName.includes("/tile/") ||
+      lowerName.includes("/tileentity/") ||
+      lowerName.includes("/blockentity/") ||
+      lowerName.includes("/network/") ||
+      lowerName.includes("/world/") ||
+      lowerName.includes("/registry/")
+    ) {
       serverCompatibleScore += 2;
     }
 
-    // Check for client-only keywords in file names
-    for (const keyword of CLIENT_KEYWORDS) {
-      if (lowerName.includes(keyword)) {
-        clientOnlyScore += 1;
-      }
+    // Count total class files
+    if (fileName.endsWith(".class")) {
+      totalClassFiles++;
     }
 
-    // Scan .class files for client-only package references
-    if (fileName.endsWith(".class")) {
-      try {
-        const classFile = zip.file(fileName);
-        if (classFile) {
-          const content = await classFile.async("text");
-          
-          // Check for CLIENT_ONLY_PATTERNS in class file content
-          for (const pattern of CLIENT_ONLY_PATTERNS) {
-            if (pattern.test(content)) {
-              clientOnlyScore += 3;
-              break; // Only count once per file
-            }
-          }
-        }
-      } catch {
-        // Skip files that can't be read as text
+    // Check for client-only keywords in file names (with lower weight)
+    for (const keyword of CLIENT_KEYWORDS) {
+      if (lowerName.includes(keyword)) {
+        clientOnlyScore += 0.5;
       }
     }
   }
 
-  // If there's evidence of server code, it's not client-only
+  // If there's ANY evidence of server code, it's not client-only
   if (serverCompatibleScore > 0) {
     return false;
   }
 
-  // If most indicators point to client-only
-  return clientOnlyScore > 5 && serverCompatibleScore === 0;
+  // Only flag as client-only if:
+  // 1. High client score AND zero server score
+  // 2. Most class files are in client directories (>80%)
+  const clientRatio = totalClassFiles > 0 ? clientClassFiles / totalClassFiles : 0;
+  
+  return clientOnlyScore > 10 && serverCompatibleScore === 0 && clientRatio > 0.8;
 }
 
 export async function analyzeModFile(

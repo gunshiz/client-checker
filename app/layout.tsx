@@ -11,7 +11,7 @@ const kanit = Kanit({
 });
 
 export const metadata: Metadata = {
-  title: "Mod checker",
+  title: "Client checker",
   description: "ตรวจสอบมอดสำหรับการลงเซิพเวอร์",
 };
 

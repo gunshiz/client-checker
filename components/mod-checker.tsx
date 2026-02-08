@@ -23,14 +23,24 @@ import {
   Loader2,
   AlertTriangle,
   Box,
+  Github,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
+
+interface ModResult extends ModAnalysisResult {
+  fileName: string;
+}
 
 export function ModChecker() {
   const [isDragging, setIsDragging] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [result, setResult] = useState<ModAnalysisResult | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [results, setResults] = useState<ModResult[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentFileName, setCurrentFileName] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [totalFiles, setTotalFiles] = useState(0);
+  const [processedFiles, setProcessedFiles] = useState(0);
   const [showResultDialog, setShowResultDialog] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -52,7 +62,7 @@ export function ModChecker() {
 
     const files = e.dataTransfer.files;
     if (files.length > 0) {
-      handleFile(files[0]);
+      handleFiles(Array.from(files));
     }
   }, []);
 
@@ -60,55 +70,71 @@ export function ModChecker() {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (files && files.length > 0) {
-        handleFile(files[0]);
+        handleFiles(Array.from(files));
       }
     },
     []
   );
 
-  const handleFile = async (file: File) => {
-    // Client-side validation for file type
-    if (!file.name.toLowerCase().endsWith(".jar")) {
+  const handleFiles = async (files: File[]) => {
+    // Filter only .jar files
+    const jarFiles = files.filter((file) =>
+      file.name.toLowerCase().endsWith(".jar")
+    );
+
+    if (jarFiles.length === 0) {
       setErrorMessage("กรุณาอัพโหลดไฟล์ .jar เท่านั้น!");
       setShowErrorDialog(true);
       return;
     }
 
-    setFileName(file.name);
-    setResult(null);
+    if (jarFiles.length < files.length) {
+      // Some files were filtered out
+      setErrorMessage(
+        `พบไฟล์ที่ไม่ใช่ .jar ${files.length - jarFiles.length} ไฟล์ จะตรวจสอบเฉพาะไฟล์ .jar เท่านั้น`
+      );
+      setShowErrorDialog(true);
+    }
+
+    setResults([]);
+    setCurrentIndex(0);
     setIsAnalyzing(true);
+    setTotalFiles(jarFiles.length);
+    setProcessedFiles(0);
     setUploadProgress(0);
 
-    // Simulate upload progress
-    const progressInterval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 90) {
-          clearInterval(progressInterval);
-          return 90;
-        }
-        return prev + 10;
-      });
-    }, 100);
+    const newResults: ModResult[] = [];
 
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const analysisResult = await analyzeModFile(formData);
-      setUploadProgress(100);
-      setResult(analysisResult);
-      setShowResultDialog(true);
-    } catch (error) {
-      setResult({
-        isClientOnly: false,
-        modName: file.name,
-        modLoader: "unknown",
-        reason: `Error: ${error instanceof Error ? error.message : "Failed to analyze file"}`,
-      });
-      setShowResultDialog(true);
-    } finally {
-      clearInterval(progressInterval);
-      setIsAnalyzing(false);
+    for (let i = 0; i < jarFiles.length; i++) {
+      const file = jarFiles[i];
+      setCurrentFileName(file.name);
+      setProcessedFiles(i);
+      setUploadProgress(Math.round(((i + 0.5) / jarFiles.length) * 100));
+
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const analysisResult = await analyzeModFile(formData);
+        newResults.push({
+          ...analysisResult,
+          fileName: file.name,
+        });
+      } catch (error) {
+        newResults.push({
+          isClientOnly: false,
+          modName: file.name,
+          modLoader: "unknown",
+          reason: `Error: ${error instanceof Error ? error.message : "Failed to analyze file"}`,
+          fileName: file.name,
+        });
+      }
     }
+
+    setResults(newResults);
+    setProcessedFiles(jarFiles.length);
+    setUploadProgress(100);
+    setIsAnalyzing(false);
+    setShowResultDialog(true);
   };
 
   const handleClick = () => {
@@ -116,13 +142,24 @@ export function ModChecker() {
   };
 
   const resetChecker = () => {
-    setResult(null);
-    setFileName(null);
+    setResults([]);
+    setCurrentIndex(0);
+    setCurrentFileName(null);
     setUploadProgress(0);
+    setTotalFiles(0);
+    setProcessedFiles(0);
     setShowResultDialog(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+  };
+
+  const goToPrevious = () => {
+    setCurrentIndex((prev) => Math.max(0, prev - 1));
+  };
+
+  const goToNext = () => {
+    setCurrentIndex((prev) => Math.min(results.length - 1, prev + 1));
   };
 
   const getModLoaderBadge = (loader: string) => {
@@ -136,6 +173,12 @@ export function ModChecker() {
     return colors[loader] || colors.unknown;
   };
 
+  const currentResult = results[currentIndex];
+
+  // Count client-only mods
+  const clientOnlyCount = results.filter((r) => r.isClientOnly).length;
+  const serverCompatibleCount = results.length - clientOnlyCount;
+
   return (
     <>
       <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex flex-col items-center justify-center p-4">
@@ -145,7 +188,7 @@ export function ModChecker() {
             <div className="flex items-center justify-center gap-3">
               <Box className="h-12 w-12 text-emerald-500" />
               <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                Minecraft Mod checker
+                Minecraft Client Checker
               </h1>
             </div>
             <p className="text-zinc-400 text-lg">
@@ -158,7 +201,7 @@ export function ModChecker() {
             <CardHeader>
               <CardTitle className="text-zinc-100 flex items-center gap-2">
                 <Upload className="h-5 w-5 text-emerald-500" />
-                อัพโหลดไฟล์
+                อัพโหลดไฟล์ (รองรับหลายไฟล์)
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -182,6 +225,7 @@ export function ModChecker() {
                   ref={fileInputRef}
                   type="file"
                   accept=".jar"
+                  multiple
                   onChange={handleFileInput}
                   className="hidden"
                 />
@@ -190,7 +234,12 @@ export function ModChecker() {
                   <div className="space-y-4">
                     <Loader2 className="h-12 w-12 mx-auto text-emerald-500 animate-spin" />
                     <div className="space-y-2">
-                      <p className="text-zinc-300">กำลังตรวจสอบ {fileName}...</p>
+                      <p className="text-zinc-300">
+                        กำลังตรวจสอบ {currentFileName}...
+                      </p>
+                      <p className="text-zinc-500 text-sm">
+                        {processedFiles} / {totalFiles} ไฟล์
+                      </p>
                       <Progress value={uploadProgress} className="w-64 mx-auto" />
                     </div>
                   </div>
@@ -213,7 +262,7 @@ export function ModChecker() {
                           : "ลากหรือวางไฟล์ .jar ของคุณที่นี่"}
                       </p>
                       <p className="text-zinc-500 text-sm">
-                        หรือคลิกเพื่อเลือกไฟล์
+                        หรือคลิกเพื่อเลือกไฟล์ (สามารถเลือกหลายไฟล์ได้)
                       </p>
                     </div>
                   </div>
@@ -224,9 +273,9 @@ export function ModChecker() {
 
           {/* Warning Note */}
           <Alert className="border-amber-500/30 bg-amber-500/5">
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
-            <AlertDescription className="text-amber-300/70 text-sm">
-              <strong>โน้ต:</strong> โปรแกรมตรวจสอบนี้จะวิเคราะห์ MetaData ของมอดและโครงสร้างไฟล์
+            <AlertTriangle className="h-4 w-4" color="#ffc800" />
+            <AlertDescription className="text-amber-300 text-sm">
+              <strong>หมายเหตุ:</strong> เว็บไซด์นี้จะวิเคราะห์ MetaData ของมอดและโครงสร้างไฟล์
               อาจมีความผิดพลาดที่เกิดขึ้นได้
             </AlertDescription>
           </Alert>
@@ -234,35 +283,62 @@ export function ModChecker() {
           {/* Footer */}
           <div className="text-center space-y-2">
             <p className="text-zinc-500 text-sm">
-              🤖 โปรแกรมนี้ถูกสร้างขึ้นโดย AI
+              เว็บไซด์นี้ถูกสร้างขึ้นโดย AI
             </p>
             <p className="text-zinc-600 text-xs">
-              Supports Forge, Fabric, Quilt, NeoForge mods • อัพโหลด .jar เท่านั้น!
+              การทำงานอยู่บน Browser ของคุณเท่านั้น
+            </p>
+            <p>
+              <Button
+              variant="link"
+              onClick={() => window.open("https://github.com/gunshiz/client-checker", "_blank")}
+              className="text-[16px]"
+              >
+                <Github className="h-4 w-4 mr-2" />
+                GitHub
+              </Button>
             </p>
           </div>
         </div>
       </div>
 
-      {/* Result Alert Dialog */}
+      {/* Result Alert Dialog with Navigation */}
       <AlertDialog open={showResultDialog} onOpenChange={setShowResultDialog}>
         <AlertDialogContent className="bg-zinc-900 border-zinc-800">
           <AlertDialogHeader>
-            {result && (
+            {currentResult && (
               <>
+                {/* Summary Bar */}
+                {results.length > 1 && (
+                  <div className="flex items-center justify-between mb-4 p-3 bg-zinc-800/50 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-emerald-400 flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4" /> {serverCompatibleCount} ลงได้
+                      </span>
+                      <span className="text-red-400 flex items-center gap-2">
+                        <XCircle className="h-4 w-4" /> {clientOnlyCount} ห้ามลง
+                      </span>
+                    </div>
+                    <span className="text-zinc-500 text-sm ml-2">
+                      {currentIndex + 1} / {results.length}
+                    </span>
+                  </div>
+                )}
+
                 {/* Mod Info */}
                 <div className="flex items-center gap-3 mb-4">
-                  <Box className="h-10 w-10 text-zinc-400" />
-                  <div>
-                    <AlertDialogTitle className="text-zinc-100 text-left">
-                      {result.modName}
+                  <Box className="h-10 w-10 text-zinc-400 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <AlertDialogTitle className="text-zinc-100 text-left text-sm break-all">
+                      {currentResult.fileName}
                     </AlertDialogTitle>
                     <span
-                      className={`text-xs px-2 py-0.5 rounded-full border ${getModLoaderBadge(result.modLoader)}`}
+                      className={`text-xs px-2 py-0.5 rounded-full border ${getModLoaderBadge(currentResult.modLoader)}`}
                     >
-                      {result.modLoader === "unknown"
+                      {currentResult.modLoader === "unknown"
                         ? "Unknown Loader"
-                        : result.modLoader.charAt(0).toUpperCase() +
-                          result.modLoader.slice(1)}
+                        : currentResult.modLoader.charAt(0).toUpperCase() +
+                          currentResult.modLoader.slice(1)}
                     </span>
                   </div>
                 </div>
@@ -270,13 +346,13 @@ export function ModChecker() {
                 {/* Result */}
                 <div
                   className={`w-full p-4 rounded-lg ${
-                    result.isClientOnly
+                    currentResult.isClientOnly
                       ? "bg-red-500/10 border border-red-500/30"
                       : "bg-emerald-500/10 border border-emerald-500/30"
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-2">
-                    {result.isClientOnly ? (
+                    {currentResult.isClientOnly ? (
                       <>
                         <XCircle className="h-6 w-6 text-red-500" />
                         <span className="text-red-400 font-semibold text-xl">
@@ -294,12 +370,12 @@ export function ModChecker() {
                   </div>
                   <AlertDialogDescription
                     className={
-                      result.isClientOnly ? "text-red-300/80" : "text-emerald-300/80"
+                      currentResult.isClientOnly ? "text-red-300/80" : "text-emerald-300/80"
                     }
                   >
-                    {result.reason}
+                    {currentResult.reason}
                     <span className="block mt-2 text-sm opacity-75">
-                      {result.isClientOnly
+                      {currentResult.isClientOnly
                         ? "มอดที่ถูกสร้างมาให้ใช้สำหรับผู้เล่นเท่านั้น อาจสร้างปัญหาให้กับเซิร์ฟเวอร์"
                         : "มอดนี้สามารถใช้ได้สำหรับเซิร์ฟเวอร์ ไม่มีการสร้างปัญหาให้กับเซิร์ฟเวอร์"}
                     </span>
@@ -308,7 +384,30 @@ export function ModChecker() {
               </>
             )}
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-col">
+            {/* Navigation Buttons */}
+            {results.length > 1 && (
+              <div className="flex items-center justify-between w-full gap-2">
+                <Button
+                  variant="outline"
+                  onClick={goToPrevious}
+                  disabled={currentIndex === 0}
+                  className="flex-1"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  ก่อนหน้า
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={goToNext}
+                  disabled={currentIndex === results.length - 1}
+                  className="flex-1"
+                >
+                  ถัดไป
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            )}
             <AlertDialogAction onClick={resetChecker} className="w-full">
               ตรวจสอบมอดอื่นๆ
             </AlertDialogAction>
