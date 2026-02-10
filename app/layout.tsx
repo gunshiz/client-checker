@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import { JetBrains_Mono, Kanit } from "next/font/google";
+import { Kanit } from "next/font/google";
 import "./globals.css";
-
-const jetbrainsMono = JetBrains_Mono({subsets:['latin'],variable:'--font-sans', weight: ['300']});
 
 const kanit = Kanit({
   subsets: ["latin"],
@@ -21,9 +19,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={jetbrainsMono.variable}>
+    <html lang="en">
       <body
-        className={`${kanit.variable} antialiased h-full`}
+        className={`${kanit.className} antialiased h-full`}
       >
         {children}
       </body>

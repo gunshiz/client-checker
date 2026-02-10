@@ -244,6 +244,17 @@ export async function analyzeModFile(
     };
   }
 
+  // Reject files over 50MB
+  const MAX_SIZE = 50 * 1024 * 1024;
+  if (file.size > MAX_SIZE) {
+    return {
+      isClientOnly: false,
+      modName: file.name,
+      modLoader: "unknown",
+      reason: "ไฟล์ขนาดเกิน 50MB",
+    };
+  }
+
   try {
     const arrayBuffer = await file.arrayBuffer();
     const zip = await JSZip.loadAsync(arrayBuffer);

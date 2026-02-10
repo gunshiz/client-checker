@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { analyzeModFile, type ModAnalysisResult } from "@/app/actions";
+import JSZip from "jszip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -32,6 +33,7 @@ import {
   Github,
   ChevronLeft,
   ChevronRight,
+  Download,
 } from "lucide-react";
 
 interface ModResult extends ModAnalysisResult {
@@ -51,6 +53,8 @@ export function ModChecker() {
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadedFilesRef = useRef<File[]>([]);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -82,6 +86,9 @@ export function ModChecker() {
     []
   );
 
+  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB per file
+  const MAX_FILES = 50;
+
   const handleFiles = async (files: File[]) => {
     // Filter only .jar files
     const jarFiles = files.filter((file) =>
@@ -90,6 +97,23 @@ export function ModChecker() {
 
     if (jarFiles.length === 0) {
       setErrorMessage("กรุณาอัพโหลดไฟล์ .jar เท่านั้น!");
+      setShowErrorDialog(true);
+      return;
+    }
+
+    // Limit number of files
+    if (jarFiles.length > MAX_FILES) {
+      setErrorMessage(`อัพโหลดได้สูงสุด ${MAX_FILES} ไฟล์ต่อครั้ง`);
+      setShowErrorDialog(true);
+      return;
+    }
+
+    // Check file sizes
+    const oversizedFiles = jarFiles.filter((f) => f.size > MAX_FILE_SIZE);
+    if (oversizedFiles.length > 0) {
+      setErrorMessage(
+        `ไฟล์ขนาดเกิน 50MB: ${oversizedFiles.map((f) => f.name).join(", ")}`
+      );
       setShowErrorDialog(true);
       return;
     }
@@ -108,6 +132,7 @@ export function ModChecker() {
     setTotalFiles(jarFiles.length);
     setProcessedFiles(0);
     setUploadProgress(0);
+    uploadedFilesRef.current = jarFiles;
 
     const newResults: ModResult[] = [];
 
@@ -155,8 +180,48 @@ export function ModChecker() {
     setTotalFiles(0);
     setProcessedFiles(0);
     setShowResultDialog(false);
+    uploadedFilesRef.current = [];
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  };
+
+  const downloadServerMods = async () => {
+    const serverCompatibleFileNames = results
+      .filter((r) => !r.isClientOnly)
+      .map((r) => r.fileName);
+
+    if (serverCompatibleFileNames.length === 0) return;
+
+    setIsDownloading(true);
+    try {
+      const zip = new JSZip();
+      for (const file of uploadedFilesRef.current) {
+        if (serverCompatibleFileNames.includes(file.name)) {
+          const buffer = await file.arrayBuffer();
+          zip.file(file.name, buffer);
+        }
+      }
+
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const now = new Date();
+      const dd = String(now.getDate()).padStart(2, "0");
+      const mm = String(now.getMonth() + 1).padStart(2, "0");
+      const yyyy = now.getFullYear();
+      const hh = String(now.getHours()).padStart(2, "0");
+      const min = String(now.getMinutes()).padStart(2, "0");
+      a.download = `${dd}_${mm}_${yyyy}-${hh}_${min}-mods.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to create zip:", error);
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -203,11 +268,11 @@ export function ModChecker() {
           </div>
 
           {/* Upload Card */}
-          <Card className="bg-zinc-900/50 border-zinc-800 backdrop-blur-sm">
+          <Card className="bg-zinc-800/50 border-zinc-800 backdrop-blur-sm">
             <CardHeader>
               <CardTitle className="text-zinc-100 flex items-center gap-2">
                 <Upload className="h-5 w-5 text-emerald-500" />
-                อัพโหลดไฟล์ (รองรับหลายไฟล์)
+                อัพโหลดไฟล์
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -290,9 +355,6 @@ export function ModChecker() {
           <div className="text-center space-y-2">
             <p className="text-zinc-500 text-sm">
               เว็บไซด์นี้ถูกสร้างขึ้นโดย AI
-            </p>
-            <p className="text-zinc-600 text-xs">
-              การทำงานอยู่บน Browser ของคุณเท่านั้น
             </p>
             <p>
               <Button
@@ -468,8 +530,22 @@ export function ModChecker() {
                 </Button>
               </div>
             )}
-            <AlertDialogAction onClick={resetChecker} className="w-full">
-              ตรวจสอบมอดอื่นๆ
+            {serverCompatibleCount > 0 && results.length > 1 && (
+              <Button
+                onClick={downloadServerMods}
+                disabled={isDownloading}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {isDownloading ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                ดาวน์โหลดมอดที่ลงได้ (.zip)
+              </Button>
+            )}
+            <AlertDialogAction onClick={resetChecker} className="w-full" variant="destructive">
+              ปิดหน้านี้
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

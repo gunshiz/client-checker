@@ -4,9 +4,6 @@
 
 @custom-variant dark (&:is(.dark *));
 
-* {
-  font-family: 'Kanit', sans-serif;
-}
 
 @theme inline {
   --color-background: var(--background);

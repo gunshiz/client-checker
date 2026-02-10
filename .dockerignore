@@ -1,0 +1,17 @@
+node_modules
+.next
+dist
+.env.local
+.env.production.local
+.git
+.gitignore
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+.DS_Store
+
+*.db
+*.db-shm
+*.db-wal
+tsconfig.tsbuildinfo
+README.md

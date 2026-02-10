@@ -8,3 +8,8 @@ services:
       - "8706:3000"
     environment:
       - NODE_ENV=production
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
