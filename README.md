@@ -1,5 +1,9 @@
 # 🧊 Minecraft Client Checker
 
+## 🤖 Disclaimer
+
+This project was entirely built with AI assistance.
+
 A web app to check whether Minecraft mods are client-side only. Supports `.jar` file analysis for **Forge**, **NeoForge**, **Fabric**, and **Quilt** mod loaders.
 
 ## ✨ Features
