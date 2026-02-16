@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🧊 Minecraft Client Checker
 
-## Getting Started
+A web app to check whether Minecraft mods are client-side only. Supports `.jar` file analysis for **Forge**, **NeoForge**, **Fabric**, and **Quilt** mod loaders.
 
-First, run the development server:
+## ✨ Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- 📦 **Upload mod files** — Drag & drop or select `.jar` files to analyze
+- 📂 **Multi-file support** — Upload and analyze multiple mods at once
+- 🔍 **Mod loader detection** — Automatically detects Forge, NeoForge, Fabric, and Quilt
+- ⚠️ **Client-only detection** — Identifies mods that can't run on a server
+- 📥 **Download server mods** — Export only server-compatible mods as a `.zip`
+
+## 🛠️ Tech Stack
+
+- **Framework** — [Next.js 16](https://nextjs.org/) (App Router, Server Actions)
+- **Runtime** — [Bun](https://bun.sh/)
+- **Language** — TypeScript
+- **Styling** — Tailwind CSS v4
+- **UI** — [shadcn/ui](https://ui.shadcn.com/) + Lucide Icons
+- **Zip** — [JSZip](https://stuk.github.io/jszip/)
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- [Bun](https://bun.sh/) (recommended) or Node.js
+
+## 📁 Project Structure
+
+```
+client-checker/
+├── app/
+│   ├── actions.ts          # Server actions (mod analysis)
+│   └── page.tsx            # Main page
+├── components/
+│   ├── mod-checker.tsx     # Mod checker component
+│   └── ui/                 # shadcn/ui components
+└── package.json
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🔎 How It Works
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. User uploads `.jar` mod files
+2. Server Action extracts the `.jar` (zip) and checks:
+   - **Forge/NeoForge** — Reads `META-INF/mods.toml` for `side="CLIENT"`
+   - **Fabric** — Reads `fabric.mod.json` for `environment: "client"`
+   - **Quilt** — Reads `quilt.mod.json` for `environment: "client"`
+   - **Class files** — Scans for client-only packages like `net.minecraft.client`, `com.mojang.blaze3d`
+3. Displays which mods are client-only and which are server-compatible
