@@ -1,6 +1,8 @@
 "use server";
 
 import JSZip from "jszip";
+import fs from "fs";
+import path from "path";
 
 export interface ModAnalysisResult {
   isClientOnly: boolean;
@@ -22,18 +24,45 @@ const CLIENT_ONLY_PATTERNS = [
 ];
 
 // Keywords that indicate client-side functionality
-const CLIENT_KEYWORDS = [
-  "renderer",
-  "shader",
-  "gui",
-  "screen",
-  "hud",
-  "overlay",
-  "texture",
-  "model",
-  "optifine",
-  "iris",
-];
+const CLIENT_KEYWORD_REGEX = /renderer|shader|gui|screen|hud|overlay|texture|model|optifine|iris/i;
+
+// Database cache
+let cachedDatabase: { client: string[]; server: string[]; both: string[] } | null = null;
+
+function getModsDatabase() {
+  if (cachedDatabase) return cachedDatabase;
+
+  const databasePath = path.join(process.cwd(), "mods-database.json");
+  try {
+    if (fs.existsSync(databasePath)) {
+      const content = fs.readFileSync(databasePath, "utf-8");
+      const data = JSON.parse(content);
+      cachedDatabase = {
+        client: data.client || [],
+        server: data.server || [],
+        both: data.both || [],
+      };
+    } else {
+      cachedDatabase = { client: [], server: [], both: [] };
+    }
+  } catch (error) {
+    console.error("Failed to load mods-database.json:", error);
+    cachedDatabase = { client: [], server: [], both: [] };
+  }
+  return cachedDatabase;
+}
+
+function isClientSideInDatabase(modId: string, modName: string): boolean {
+  const db = getModsDatabase();
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const normalizedId = normalize(modId);
+  const normalizedName = normalize(modName);
+
+  return db.client.some((dbId) => {
+    const normalizedDbId = normalize(dbId);
+    return normalizedDbId === normalizedId || normalizedDbId === normalizedName;
+  });
+}
 
 async function parseForgeModsToml(
   content: string
@@ -180,18 +209,19 @@ async function analyzeClassFiles(zip: JSZip): Promise<boolean> {
     }
 
     // Check for client-only keywords in file names (with lower weight)
-    for (const keyword of CLIENT_KEYWORDS) {
-      if (lowerName.includes(keyword)) {
-        clientOnlyScore += 0.5;
-      }
+    if (CLIENT_KEYWORD_REGEX.test(lowerName)) {
+      clientOnlyScore += 0.5;
     }
 
     // Scan .class files for client-only package references
-    if (fileName.endsWith(".class") && lowerName.includes("/client/")) {
+    // Limit to first 100 client-related class files to avoid performance issues
+    if (fileName.endsWith(".class") && lowerName.includes("/client/") && clientClassFiles < 100) {
       try {
         const classFile = zip.file(fileName);
         if (classFile) {
-          const content = await classFile.async("text");
+          // Use uint8array then convert to string to be safer with binary files
+          const uint8 = await classFile.async("uint8array");
+          const content = Buffer.from(uint8.slice(0, 4096)).toString('utf-8'); // Scan only first 4KB
           
           // Check for CLIENT_ONLY_PATTERNS in class file content
           for (const pattern of CLIENT_ONLY_PATTERNS) {
@@ -202,7 +232,7 @@ async function analyzeClassFiles(zip: JSZip): Promise<boolean> {
           }
         }
       } catch {
-        // Skip files that can't be read as text
+        // Skip files that can't be read
       }
     }
   }
@@ -244,14 +274,14 @@ export async function analyzeModFile(
     };
   }
 
-  // Reject files over 50MB
-  const MAX_SIZE = 50 * 1024 * 1024;
+  // Reject files over 95MB
+  const MAX_SIZE =95 * 1024 * 1024;
   if (file.size > MAX_SIZE) {
     return {
       isClientOnly: false,
       modName: file.name,
       modLoader: "unknown",
-      reason: "ไฟล์ขนาดเกิน 50MB",
+      reason: "ไฟล์ขนาดเกิน 95MB",
     };
   }
 
@@ -260,11 +290,34 @@ export async function analyzeModFile(
     const zip = await JSZip.loadAsync(arrayBuffer);
 
     // Detect which loader files exist
+    let detectedLoader: "forge" | "neoforge" | "fabric" | "quilt" | "unknown" = "unknown";
     const detectedFiles: string[] = [];
-    if (zip.file("META-INF/neoforge.mods.toml")) detectedFiles.push("neoforge.mods.toml");
-    if (zip.file("META-INF/mods.toml")) detectedFiles.push("mods.toml");
-    if (zip.file("quilt.mod.json")) detectedFiles.push("quilt.mod.json");
-    if (zip.file("fabric.mod.json")) detectedFiles.push("fabric.mod.json");
+    
+    if (zip.file("META-INF/neoforge.mods.toml")) {
+      detectedLoader = "neoforge";
+      detectedFiles.push("neoforge.mods.toml");
+    } else if (zip.file("META-INF/mods.toml")) {
+      detectedLoader = "forge";
+      detectedFiles.push("mods.toml");
+    } else if (zip.file("quilt.mod.json")) {
+      detectedLoader = "quilt";
+      detectedFiles.push("quilt.mod.json");
+    } else if (zip.file("fabric.mod.json")) {
+      detectedLoader = "fabric";
+      detectedFiles.push("fabric.mod.json");
+    }
+
+    // Initial check by filename
+    const fileNameBase = file.name.replace(".jar", "");
+    if (isClientSideInDatabase(fileNameBase, fileNameBase)) {
+      return {
+        isClientOnly: true,
+        modName: fileNameBase,
+        modLoader: detectedLoader,
+        reason: "มอดนี้อยู่ในฐานข้อมูลว่าเป็น Client Side",
+        detectedFiles,
+      };
+    }
 
     // Try to find NeoForge neoforge.mods.toml (NeoForge-specific)
     const neoforgeToml = zip.file("META-INF/neoforge.mods.toml");
@@ -273,6 +326,16 @@ export async function analyzeModFile(
       const result = await parseForgeModsToml(content);
 
       if (result) {
+        // Check database first
+        if (isClientSideInDatabase(result.name, result.name)) {
+          return {
+            isClientOnly: true,
+            modName: result.name,
+            modLoader: "neoforge",
+            reason: "มอดนี้อยู่ในฐานข้อมูลว่าเป็น Client Side",
+          };
+        }
+
         if (result.isClientOnly) {
           return {
             isClientOnly: true,
@@ -312,6 +375,16 @@ export async function analyzeModFile(
       const result = await parseForgeModsToml(content);
 
       if (result) {
+        // Check database first
+        if (isClientSideInDatabase(result.name, result.name)) {
+          return {
+            isClientOnly: true,
+            modName: result.name,
+            modLoader: "forge",
+            reason: "มอดนี้อยู่ในฐานข้อมูลว่าเป็น Client Side",
+          };
+        }
+
         if (result.isClientOnly) {
           return {
             isClientOnly: true,
@@ -351,6 +424,16 @@ export async function analyzeModFile(
       const result = await parseQuiltModJson(content);
 
       if (result) {
+        // Check database first
+        if (isClientSideInDatabase(result.name, result.name)) {
+          return {
+            isClientOnly: true,
+            modName: result.name,
+            modLoader: "quilt",
+            reason: "มอดนี้อยู่ในฐานข้อมูลว่าเป็น Client Side",
+          };
+        }
+
         if (result.isClientOnly) {
           return {
             isClientOnly: true,
@@ -389,6 +472,17 @@ export async function analyzeModFile(
       const result = await parseFabricModJson(content);
 
       if (result) {
+        // Check database first
+        if (isClientSideInDatabase(result.name, result.name)) {
+          return {
+            isClientOnly: true,
+            modName: result.name,
+            modLoader: "fabric",
+            reason: "มอดนี้อยู่ในฐานข้อมูลว่าเป็น Client Side",
+            detectedFiles,
+          };
+        }
+
         if (result.isClientOnly) {
           return {
             isClientOnly: true,

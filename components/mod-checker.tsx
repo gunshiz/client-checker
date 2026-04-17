@@ -30,11 +30,13 @@ import {
   Loader2,
   AlertTriangle,
   Box,
-  Github,
   ChevronLeft,
   ChevronRight,
   Download,
 } from "lucide-react";
+import { Input } from "./ui/input";
+import { Spinner } from "./ui/spinner";
+import Link from 'next/link';
 
 interface ModResult extends ModAnalysisResult {
   fileName: string;
@@ -54,6 +56,7 @@ export function ModChecker() {
   const [errorMessage, setErrorMessage] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadedFilesRef = useRef<File[]>([]);
+  const shouldCancelRef = useRef(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -86,8 +89,8 @@ export function ModChecker() {
     []
   );
 
-  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB per file
-  const MAX_FILES = 50;
+  const MAX_FILE_SIZE = 95 * 1024 * 1024; // 50MB per file
+  const MAX_FILES = 300;
 
   const handleFiles = async (files: File[]) => {
     // Filter only .jar files
@@ -112,7 +115,7 @@ export function ModChecker() {
     const oversizedFiles = jarFiles.filter((f) => f.size > MAX_FILE_SIZE);
     if (oversizedFiles.length > 0) {
       setErrorMessage(
-        `ไฟล์ขนาดเกิน 50MB: ${oversizedFiles.map((f) => f.name).join(", ")}`
+        `ไฟล์ขนาดเกิน 95MB: ${oversizedFiles.map((f) => f.name).join(", ")}`
       );
       setShowErrorDialog(true);
       return;
@@ -133,10 +136,13 @@ export function ModChecker() {
     setProcessedFiles(0);
     setUploadProgress(0);
     uploadedFilesRef.current = jarFiles;
+    shouldCancelRef.current = false;
 
     const newResults: ModResult[] = [];
 
     for (let i = 0; i < jarFiles.length; i++) {
+      if (shouldCancelRef.current) break;
+      
       const file = jarFiles[i];
       setCurrentFileName(file.name);
       setProcessedFiles(i);
@@ -161,6 +167,12 @@ export function ModChecker() {
       }
     }
 
+    if (shouldCancelRef.current) {
+      setResults([]);
+      setIsAnalyzing(false);
+      return;
+    }
+
     setResults(newResults);
     setProcessedFiles(jarFiles.length);
     setUploadProgress(100);
@@ -170,6 +182,10 @@ export function ModChecker() {
 
   const handleClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const cancelAnalysis = () => {
+    shouldCancelRef.current = true;
   };
 
   const resetChecker = () => {
@@ -252,13 +268,13 @@ export function ModChecker() {
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex flex-col items-center justify-center p-4">
+      <div className="min-h-screen flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-2xl space-y-8">
           {/* Header */}
           <div className="text-center space-y-4">
             <div className="flex items-center justify-center gap-3">
               <Box className="h-12 w-12 text-emerald-500" />
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+              <h1 className="text-4xl font-bold bg-linear-to-br from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
                 Minecraft Client Checker
               </h1>
             </div>
@@ -268,14 +284,14 @@ export function ModChecker() {
           </div>
 
           {/* Upload Card */}
-          <Card className="bg-zinc-800/50 border-zinc-800 backdrop-blur-sm">
+          <Card>
             <CardHeader>
-              <CardTitle className="text-zinc-100 flex items-center gap-2">
-                <Upload className="h-5 w-5 text-emerald-500" />
+              <CardTitle className="flex items-center gap-2 font-anuphan">
+                <Upload className="size-5 text-emerald-500" />
                 อัพโหลดไฟล์
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent>
               {/* Drop Zone */}
               <div
                 onClick={handleClick}
@@ -292,7 +308,7 @@ export function ModChecker() {
                   }
                 `}
               >
-                <input
+                <Input
                   ref={fileInputRef}
                   type="file"
                   accept=".jar"
@@ -303,7 +319,7 @@ export function ModChecker() {
 
                 {isAnalyzing ? (
                   <div className="space-y-4">
-                    <Loader2 className="h-12 w-12 mx-auto text-emerald-500 animate-spin" />
+                    <Spinner className="mx-auto size-12" />
                     <div className="space-y-2">
                       <p className="text-zinc-300">
                         กำลังตรวจสอบ {currentFileName}...
@@ -312,6 +328,17 @@ export function ModChecker() {
                         {processedFiles} / {totalFiles} ไฟล์
                       </p>
                       <Progress value={uploadProgress} className="w-64 mx-auto" />
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          cancelAnalysis();
+                        }}
+                        className="mt-4 border-zinc-700 hover:bg-zinc-800 text-zinc-400"
+                      >
+                        ยกเลิกการตรวจสอบ
+                      </Button>
                     </div>
                   </div>
                 ) : (
@@ -323,17 +350,14 @@ export function ModChecker() {
                     `}
                     >
                       <FileArchive
-                        className={`h-12 w-12 ${isDragging ? "text-emerald-400" : "text-zinc-500"}`}
+                        className={`size-12 ${isDragging ? "text-emerald-400" : "text-zinc-500"}`}
                       />
                     </div>
-                    <div className="space-y-2">
-                      <p className="text-zinc-300 font-medium">
+                    <div className="space-y-1">
+                      <p className="text-zinc-300">
                         {isDragging
-                          ? "วางไฟล์ของคุณที่นี่!"
-                          : "ลากหรือวางไฟล์ .jar ของคุณที่นี่"}
-                      </p>
-                      <p className="text-zinc-500 text-sm">
-                        หรือคลิกเพื่อเลือกไฟล์ (สามารถเลือกหลายไฟล์ได้)
+                          ? "ปล่อยไฟล์เลย!"
+                          : "ลากไฟล์มาลงที่นี่ได้เลย"}
                       </p>
                     </div>
                   </div>
@@ -344,27 +368,27 @@ export function ModChecker() {
 
           {/* Warning Note */}
           <Alert className="border-amber-500/30 bg-amber-500/5">
-            <AlertTriangle className="h-4 w-4" color="#ffc800" />
+            <AlertTriangle className="size-4" color="#ffc800" />
             <AlertDescription className="text-amber-300 text-sm">
-              <strong>หมายเหตุ:</strong> เว็บไซด์นี้จะวิเคราะห์ MetaData ของมอดและโครงสร้างไฟล์
+              หมายเหตุ: เว็บไซด์นี้จะวิเคราะห์ MetaData ของมอดและโครงสร้างไฟล์
               อาจมีความผิดพลาดที่เกิดขึ้นได้
             </AlertDescription>
           </Alert>
 
           {/* Footer */}
-          <div className="text-center space-y-2">
+          <div className="text-center space-y-1">
             <p className="text-zinc-500 text-sm">
               เว็บไซด์นี้ถูกสร้างขึ้นโดย AI
             </p>
             <p>
-              <Button
-              variant="link"
-              onClick={() => window.open("https://github.com/gunshiz/client-checker", "_blank")}
-              className="text-[16px]"
-              >
-                <Github className="h-4 w-4 mr-2" />
-                GitHub
-              </Button>
+              <Link href="https://github.com/gunshiz/client-checker">
+                <Button
+                  variant="link"
+                  className="text-[16px]"
+                >
+                  GitHub
+                </Button>
+              </Link>
             </p>
           </div>
         </div>
@@ -449,7 +473,7 @@ export function ModChecker() {
 
                 {/* Mod Info */}
                 <div className="flex items-center gap-3 mb-4">
-                  <Box className="h-10 w-10 text-zinc-400 flex-shrink-0" />
+                  <Box className="h-10 w-10 text-zinc-400 shrink-0" />
                   <div className="min-w-0">
                     <AlertDialogTitle className="text-zinc-100 text-left text-sm break-all">
                       {currentResult.fileName}
